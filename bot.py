@@ -1,7 +1,8 @@
 import logging
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, CallbackContext
-from scraper import scrape_movies
+from telegram.ext import Application, CommandHandler, ContextTypes
+import requests
+from bs4 import BeautifulSoup
 
 # Enable logging
 logging.basicConfig(
@@ -10,42 +11,64 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Function to scrape movie links
+def scrape_movies(query):
+    base_url = "https://hdmaal.tw/search?q="  # Replace with a legal website
+    search_url = base_url + query.replace(" ", "+")
+    
+    try:
+        response = requests.get(search_url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Parse results (update this based on the website's structure)
+        results = soup.find_all('a', class_='movie-link')  # Replace 'movie-link' with the actual class name
+        movies = []
+
+        for result in results[:5]:  # Limit to top 5 results
+            title = result.text.strip()
+            link = result['href']
+            movies.append({"title": title, "link": link})
+
+        return movies
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return []
+
 # Start command
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text("Welcome to the Movie Bot! Use /search <movie_name> to find movies.")
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Welcome to the Movie Scraper Bot! Use /search <movie_name> to find movies.")
 
 # Search command
-def search(update: Update, context: CallbackContext):
+async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        update.message.reply_text("Please provide a movie name. Usage: /search <movie_name>")
+        await update.message.reply_text("Please provide a movie name. Usage: /search <movie_name>")
         return
-    
+
     movie_name = " ".join(context.args)
-    update.message.reply_text(f"Searching for '{movie_name}'...")
-    
-    # Call the scraper function
+    await update.message.reply_text(f"Searching for '{movie_name}'...")
     movies = scrape_movies(movie_name)
-    
+
     if movies:
         for movie in movies:
-            update.message.reply_text(f"{movie['title']}\n{movie['link']}")
+            await update.message.reply_text(f"{movie['title']}\n{movie['link']}")
     else:
-        update.message.reply_text("No results found or an error occurred.")
+        await update.message.reply_text("No results found or an error occurred.")
 
 # Main function
 def main():
-    # Replace with your BotFather token
-    BOT_TOKEN = "YOUR_BOT_TOKEN"
-    updater = Updater(BOT_TOKEN)
-    dispatcher = updater.dispatcher
+    BOT_TOKEN = "YOUR_BOT_TOKEN"  # Replace with your bot token
 
-    # Command Handlers
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CommandHandler("search", search))
+    # Create the application
+    application = Application.builder().token(BOT_TOKEN).build()
+
+    # Add handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("search", search))
 
     # Start the bot
-    updater.start_polling()
-    updater.idle()
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
